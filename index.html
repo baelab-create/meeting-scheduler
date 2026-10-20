@@ -134,7 +134,9 @@
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
     catch { return {}; }
   }
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* 저장 불가 환경(시크릿 모드 등)에서는 메모리만 사용 */ }
+  }
 
   // ───────── 날짜 유틸 ─────────
   function mondayOf(d) {
