@@ -78,6 +78,9 @@
   td.slot.past { background: #eceff3; border-color: #eceff3; cursor: default; }
   td.slot.past:hover { border-color: #eceff3; }
   .week-nav button:disabled { opacity: .35; cursor: default; }
+  .banner { background: var(--accent-soft); color: var(--accent); font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; }
+  .banner.error { background: #fef2f2; color: #b91c1c; }
+  body.locked td.slot { pointer-events: none; opacity: .5; }
   .week-nav .wk { display: inline-block; background: var(--accent-soft); color: var(--accent); font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-right: 6px; }
   .reset-box { margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; }
   .reset-box p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
@@ -114,6 +117,7 @@
 </header>
 
 <main>
+  <div id="banner" class="banner" hidden></div>
   <div class="week-nav">
     <button id="prevWeek">◀ 이전 주</button>
     <div class="range" id="weekRange"></div>
@@ -125,17 +129,31 @@
   <div id="extra"></div>
 </main>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
   // ───────── 설정 ─────────
   const PEOPLE = ['박성훈 교수', '배원규 교수', '신재만 교수'];
   const DAYS = ['월', '화', '수', '목', '금'];
   const START_HOUR = 10;   // 10:00
   const END_HOUR = 19;     // ~19:00 (마지막 칸 18:00~19:00)
-  const STORAGE_KEY = 'meeting-scheduler-v1';
+  const PIDS = ['p0', 'p1', 'p2'];   // Firestore 문서 안의 사람별 필드 이름 (PEOPLE 순서와 같음)
+
+  // ───────── Firestore (baelab-ledger 프로젝트, meeting/{링크 키} 문서 하나) ─────────
+  firebase.initializeApp({
+    apiKey: "AIzaSyBXE4UNgFmlnfQ5TkpR6h4DIKE2rjbI0_Q",
+    authDomain: "baelab-ledger.firebaseapp.com",
+    projectId: "baelab-ledger",
+    appId: "1:301215647344:web:9026cd464a9403629516b5"
+  });
+  const db = firebase.firestore();
+  const LINK_KEY = new URLSearchParams(location.search).get('k') || '';
+  const docRef = LINK_KEY.length >= 20 ? db.collection('meeting').doc(LINK_KEY) : null;
 
   // ───────── 상태 ─────────
   // data = { "박성훈 교수": { "2026-10-20": [10, 11, ...] }, ... }
-  let data = load();
+  let data = {};
+  let loaded = false;
   let activeTab = 0;                 // 0~2 = 사람, 3 = 결과
   const WEEKS = 2;                   // 이번 주 + 다음 주만 표시 (2주 안에 미팅을 잡는다)
   const WEEK_LABEL = ['이번 주', '다음 주'];
@@ -144,12 +162,42 @@
   function weekStartOf(i) { return addDays(baseMonday, i * 7); }
   let weekStart = weekStartOf(weekIndex);
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-    catch { return {}; }
+  function showBanner(msg, isError) {
+    const el = document.getElementById('banner');
+    el.textContent = msg; el.className = 'banner' + (isError ? ' error' : ''); el.hidden = !msg;
   }
-  function save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* 저장 불가 환경(시크릿 모드 등)에서는 메모리만 사용 */ }
+  // 한 사람의 선택을 통째로 저장 (dotted path 업데이트 → 해제한 날짜도 함께 반영됨)
+  async function persist(person) {
+    if (!docRef) return;
+    const pid = PIDS[PEOPLE.indexOf(person)];
+    try {
+      await docRef.update({ ['people.' + pid]: data[person] || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } catch (e) {
+      if (e.code === 'not-found') {
+        await docRef.set({ people: { [pid]: data[person] || {} }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      } else {
+        showBanner('저장에 실패했습니다: ' + (e.message || e), true);
+      }
+    }
+  }
+  async function persistReset() {
+    if (!docRef) return;
+    try { await docRef.set({ people: {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+    catch (e) { showBanner('리셋에 실패했습니다: ' + (e.message || e), true); }
+  }
+  function subscribe() {
+    if (!docRef) {
+      showBanner('링크에 키가 없습니다. 단톡방에 올라온 전체 링크(…?k=…)로 다시 들어와 주세요.', true);
+      return;
+    }
+    docRef.onSnapshot(snap => {
+      const people = (snap.exists && snap.data().people) || {};
+      const next = {};
+      PEOPLE.forEach((p, i) => { if (people[PIDS[i]] && Object.keys(people[PIDS[i]]).length) next[p] = people[PIDS[i]]; });
+      data = next; loaded = true;
+      showBanner('');
+      render();
+    }, e => showBanner('불러오지 못했습니다: ' + (e.message || e), true));
   }
 
   // ───────── 날짜 유틸 ─────────
@@ -194,7 +242,7 @@
     if (i >= 0) arr.splice(i, 1); else arr.push(h);
     arr.sort((a, b) => a - b);
     if (arr.length) data[person][dk] = arr; else delete data[person][dk];
-    save();
+    persist(person);
   }
   function countAvailable(dk, h) {
     return PEOPLE.filter(p => has(p, dk, h)).length;
@@ -308,7 +356,7 @@
       box.innerHTML = html;
       document.getElementById('resetAll').onclick = () => {
         if (!confirm('세 분의 선택을 모두 지우고 처음부터 다시 시작할까요?')) return;
-        data = {}; save(); weekIndex = 0; weekStart = weekStartOf(0); activeTab = 0; render();
+        data = {}; persistReset(); weekIndex = 0; weekStart = weekStartOf(0); activeTab = 0; render();
       };
     } else {
       const person = PEOPLE[activeTab];
@@ -317,12 +365,15 @@
       </div>`;
       document.getElementById('clearMine').onclick = () => {
         if (!confirm(`${person}님의 선택을 모두 지울까요?`)) return;
-        delete data[person]; save(); render();
+        delete data[person]; persist(person); render();
       };
     }
   }
 
-  function render() { renderTabs(); renderGrid(); renderExtra(); }
+  function render() {
+    document.body.classList.toggle('locked', !loaded || !docRef);   // 불러오기 전·키 없음 → 칸 잠금
+    renderTabs(); renderGrid(); renderExtra();
+  }
 
   function goWeek(i) {
     if (i < 0 || i >= WEEKS) return;
@@ -332,6 +383,8 @@
   document.getElementById('nextWeek').onclick = () => goWeek(weekIndex + 1);
 
   render();
+  if (docRef) showBanner('불러오는 중…');
+  subscribe();
 </script>
 </body>
 </html>
