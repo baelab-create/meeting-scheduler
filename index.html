@@ -5,6 +5,21 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>미팅 일정 조율</title>
+<meta name="description" content="박성훈 · 배원규 · 신재만 교수 미팅 일정 조율 — 이번 주·다음 주 가능한 시간을 눌러 주세요">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="미팅 일정 조율">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:url" content="https://baelab-create.github.io/meeting-scheduler/">
+<meta property="og:title" content="미팅 일정 조율 — 박성훈 · 배원규 · 신재만 교수">
+<meta property="og:description" content="본인 탭에서 가능한 시간을 눌러 주세요. 세 분 모두 되는 시간이 자동으로 모입니다 (이번 주 · 다음 주).">
+<meta property="og:image" content="https://baelab-create.github.io/meeting-scheduler/assets/og-meeting-v1.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="미팅 일정 조율 — 박성훈 · 배원규 · 신재만 교수">
+<meta name="twitter:image" content="https://baelab-create.github.io/meeting-scheduler/assets/og-meeting-v1.jpg">
+
 <link rel="stylesheet" href="https://baelab-create.github.io/drbae-fonts/gmarket.css">
 <style>
   /* ============================================================
@@ -53,11 +68,18 @@
     overflow:hidden;
     filter:drop-shadow(0 7px 16px rgba(0,0,0,.34));
   }
+  /* 흰 탭 = 4번째 탭(공통 가능 시간). 누를 수 있는 버튼 */
   .brand{
     position:relative;z-index:60;flex:0 0 auto;color:var(--ink);
-    padding:9px calc(var(--slant) * .5) 9px 26px;
-    display:flex;flex-direction:column;justify-content:center;
+    padding:9px calc(var(--slant) * .5 + 4px) 9px 26px;
+    display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
+    border:0;background:none;cursor:pointer;text-align:left;
+    transition:color .18s;
   }
+  .brand:hover .bt{color:var(--red-dim);}
+  .brand.on .bt{color:var(--red);}
+  .brand.on .bt::before{content:"✔ ";font-style:normal;}
+  .brand:focus-visible{outline:2px solid var(--red);outline-offset:-6px;border-radius:4px;}
   .brand::before{
     content:"";position:absolute;z-index:-1;left:0;right:20px;top:0;bottom:-14px;
     background:var(--paper);border-radius:var(--round) 0 0 0;
@@ -69,7 +91,7 @@
     transform:skewX(var(--skew));
     box-shadow:4px 0 10px rgba(0,0,0,.33);
   }
-  .brand .bt{font-size:1.18rem;font-weight:700;font-style:italic;letter-spacing:.01em;white-space:nowrap;}
+  .brand .bt{font-size:1.08rem;font-weight:700;letter-spacing:.01em;white-space:nowrap;transition:color .18s;}
   .brand .bs{font-size:.62rem;font-weight:300;color:var(--gold);margin-top:3px;white-space:nowrap;}
 
   .tabs{display:flex;align-items:stretch;flex:1;min-width:0;}
@@ -206,8 +228,8 @@
   /* ---------- 좁은 화면 ---------- */
   @media(max-width:1100px){
     :root{--gap:10px;--tab-h:52px;--slant:27px;--round:11px;--tab-drop:5px;}
-    .brand{padding:8px calc(var(--slant) * .5) 8px 16px;}
-    .brand .bt{font-size:.95rem;}
+    .brand{padding:8px calc(var(--slant) * .5 + 2px) 8px 16px;}
+    .brand .bt{font-size:.9rem;}
     .brand .bs{display:none;}
     .tabs{overflow-x:auto;scrollbar-width:none;}
     .tabs::-webkit-scrollbar{display:none;}
@@ -227,7 +249,7 @@
   }
   @media(max-width:480px){
     .tab .num{display:none;}
-    .brand .bt{font-size:.82rem;}
+    .brand .bt{font-size:.8rem;}
   }
 </style>
 </head>
@@ -235,10 +257,10 @@
 
 <div class="deck">
   <header class="tabbar">
-    <div class="brand">
-      <span class="bt">MEETING</span>
+    <button class="brand" id="brandTab" type="button" title="세 분 모두 가능한 시간 보기">
+      <span class="bt">공통 가능 시간</span>
       <span class="bs">박성훈 · 배원규 · 신재만 교수 미팅 일정 조율</span>
-    </div>
+    </button>
     <nav class="tabs" id="tabs" aria-label="교수별 탭"></nav>
     <span class="tabend"></span>
   </header>
@@ -260,7 +282,7 @@
 
   <div class="foot">
     <span class="now" id="now"></span>
-    <span class="keys">탭 이동 <kbd>1</kbd>~<kbd>4</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></span>
+    <span class="keys">탭 이동 <kbd>1</kbd>~<kbd>3</kbd> · 공통 <kbd>4</kbd> 또는 <kbd>←</kbd><kbd>→</kbd></span>
     <span class="spacer"></span>
     <button id="copyLink" type="button">링크 복사</button>
   </div>
@@ -285,8 +307,12 @@
     appId: "1:301215647344:web:9026cd464a9403629516b5"
   });
   const db = firebase.firestore();
-  const LINK_KEY = new URLSearchParams(location.search).get('k') || '';
-  const docRef = LINK_KEY.length >= 20 ? db.collection('meeting').doc(LINK_KEY) : null;
+  // 링크만 눌러도 열리도록 기본 문서를 정해 둔다(교수님 지시: 공개 저장소라 키·비밀번호 없음).
+  // 다른 모임에 같은 페이지를 쓰려면 ?k=<20자 이상 아무 문자열> 로 문서를 바꿀 수 있다.
+  const DEFAULT_KEY = 'meeting-2026-10-park-bae-shin';
+  const urlKey = new URLSearchParams(location.search).get('k') || '';
+  const LINK_KEY = urlKey.length >= 20 ? urlKey : DEFAULT_KEY;
+  const docRef = db.collection('meeting').doc(LINK_KEY);
 
   // ───────── 상태 ─────────
   // data = { "박성훈 교수": { "2026-10-20": [10, 11, ...] }, ... }
@@ -324,10 +350,6 @@
     catch (e) { showBanner('리셋에 실패했습니다: ' + (e.message || e), true); }
   }
   function subscribe() {
-    if (!docRef) {
-      showBanner('링크에 키가 없습니다. 단톡방에 올라온 전체 링크(…?k=…)로 다시 들어와 주세요.', true);
-      return;
-    }
     docRef.onSnapshot(snap => {
       const people = (snap.exists && snap.data().people) || {};
       const next = {};
@@ -397,24 +419,29 @@
   }
 
   // ───────── 렌더 ─────────
+  // 빨간 사선 탭 3개 = 교수님 세 분, 흰 탭(brand) = 공통 가능 시간(activeTab 3)
   const tabsEl = document.getElementById('tabs');
-  TABS.forEach((name, i) => {
+  const brandEl = document.getElementById('brandTab');
+  PEOPLE.forEach((name, i) => {
     const b = document.createElement('button');
     b.className = 'tab'; b.type = 'button';
     b.innerHTML = '<span class="num">0' + (i + 1) + '</span>' + name;
     b.addEventListener('click', () => { activeTab = i; render(); });
     tabsEl.appendChild(b);
   });
+  brandEl.addEventListener('click', () => { activeTab = 3; render(); });
   function renderTabs() {
     const tabs = tabsEl.children;
-    for (let k = 0; k < TABS.length; k++) {
+    for (let k = 0; k < PEOPLE.length; k++) {
       tabs[k].classList.toggle('on', k === activeTab);
       tabs[k].style.zIndex = (k === activeTab) ? 55 : 50 - k;   // 왼쪽 탭이 오른쪽 탭 위로, 선택 탭은 맨 위
       tabs[k].setAttribute('aria-current', k === activeTab ? 'page' : 'false');
     }
+    brandEl.classList.toggle('on', activeTab === 3);
+    brandEl.setAttribute('aria-current', activeTab === 3 ? 'page' : 'false');
     document.getElementById('now').textContent = TABS[activeTab];
     if (location.hash !== '#' + (activeTab + 1)) history.replaceState(null, '', location.search + '#' + (activeTab + 1));
-    tabs[activeTab].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (activeTab < 3) tabs[activeTab].scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   function renderGrid() {
@@ -518,7 +545,7 @@
   }
 
   function render() {
-    document.body.classList.toggle('locked', !loaded || !docRef);   // 불러오기 전·키 없음 → 칸 잠금
+    document.body.classList.toggle('locked', !loaded);   // 불러오기 전에는 칸 잠금
     renderTabs(); renderGrid(); renderExtra();
   }
 
@@ -537,9 +564,9 @@
     else if (e.key === 'ArrowLeft') { activeTab = (activeTab - 1 + TABS.length) % TABS.length; render(); }
   });
 
-  // 링크 복사 (키가 들어 있는 전체 주소)
+  // 링크 복사 (단톡방에 올릴 주소)
   document.getElementById('copyLink').onclick = async () => {
-    const url = location.origin + location.pathname + location.search;
+    const url = location.origin + location.pathname + (urlKey.length >= 20 ? location.search : '');
     try { await navigator.clipboard.writeText(url); showBanner('링크를 복사했습니다. 단톡방에 붙여 넣으세요.'); }
     catch { prompt('이 주소를 복사하세요', url); }
   };
@@ -549,7 +576,7 @@
   if (Number.isInteger(startTab) && startTab >= 1 && startTab <= TABS.length) activeTab = startTab - 1;
 
   render();
-  if (docRef) showBanner('불러오는 중…');
+  showBanner('불러오는 중…');
   subscribe();
 </script>
 </body>
