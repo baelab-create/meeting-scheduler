@@ -73,6 +73,13 @@
   td.slot.all { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 700; cursor: default; }
   td.slot.partial { background: var(--ok-soft); border-color: var(--ok-soft); color: var(--ok); cursor: default; }
   td.slot.readonly { cursor: default; }
+  td.slot.past { background: #eceff3; border-color: #eceff3; cursor: default; }
+  td.slot.past:hover { border-color: #eceff3; }
+  .week-nav button:disabled { opacity: .35; cursor: default; }
+  .week-nav .wk { display: inline-block; background: var(--accent-soft); color: var(--accent); font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-right: 6px; }
+  .reset-box { margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; }
+  .reset-box p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  .reset-box button.danger { padding: 10px 14px; border: 1px solid #fca5a5; background: #fef2f2; color: #b91c1c; border-radius: 8px; font-size: 14px; cursor: pointer; width: 100%; }
   td.slot.readonly:hover { border-color: var(--line); }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 10px 0; flex-wrap: wrap; }
@@ -128,7 +135,12 @@
   // data = { "박성훈 교수": { "2026-10-20": [10, 11, ...] }, ... }
   let data = load();
   let activeTab = 0;                 // 0~2 = 사람, 3 = 결과
-  let weekStart = mondayOf(new Date());
+  const WEEKS = 2;                   // 이번 주 + 다음 주만 표시 (2주 안에 미팅을 잡는다)
+  const WEEK_LABEL = ['이번 주', '다음 주'];
+  const baseMonday = mondayOf(new Date());
+  let weekIndex = 0;                 // 0 = 이번 주, 1 = 다음 주
+  function weekStartOf(i) { return addDays(baseMonday, i * 7); }
+  let weekStart = weekStartOf(weekIndex);
 
   function load() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
@@ -157,6 +169,14 @@
     return `${y}년 ${m}월 ${d}일 (${DAYS[(dt.getDay() + 6) % 7] || '주말'})`;
   }
   const todayKey = key(new Date());
+  const windowKeys = new Set();      // 표시 기간(2주 × 월~금)의 날짜 키
+  for (let w = 0; w < WEEKS; w++) for (let i = 0; i < 5; i++) windowKeys.add(key(addDays(weekStartOf(w), i)));
+  function isPast(dk, h) {
+    // 이미 지난 칸(날짜가 지났거나, 오늘인데 그 시간이 끝난 칸)
+    const now = new Date();
+    if (dk < todayKey) return true;
+    return dk === todayKey && now.getHours() >= h + 1;
+  }
 
   // ───────── 가용 여부 ─────────
   function has(person, dk, h) {
@@ -175,11 +195,9 @@
     return PEOPLE.filter(p => has(p, dk, h)).length;
   }
   function allCommonSlots() {
-    // 저장된 모든 날짜를 훑어 3명 모두 가능한 칸을 모은다
-    const dates = new Set();
-    PEOPLE.forEach(p => Object.keys(data[p] || {}).forEach(dk => dates.add(dk)));
+    // 표시 기간(2주) 안에서 3명 모두 가능한 칸을 모은다
     const out = [];
-    [...dates].sort().forEach(dk => {
+    [...windowKeys].sort().forEach(dk => {
       for (let h = START_HOUR; h < END_HOUR; h++) {
         if (countAvailable(dk, h) === PEOPLE.length) out.push({ dk, h });
       }
@@ -206,8 +224,10 @@
     const grid = document.getElementById('grid');
     const days = DAYS.map((_, i) => addDays(weekStart, i));
 
-    document.getElementById('weekRange').textContent =
-      `${fmtMD(days[0])} (월) ~ ${fmtMD(days[4])} (금)`;
+    document.getElementById('weekRange').innerHTML =
+      `<span class="wk">${WEEK_LABEL[weekIndex]}</span> ${fmtMD(days[0])} (월) ~ ${fmtMD(days[4])} (금)`;
+    document.getElementById('prevWeek').disabled = weekIndex === 0;
+    document.getElementById('nextWeek').disabled = weekIndex === WEEKS - 1;
     document.getElementById('hint').textContent = isResult
       ? '초록색 칸이 세 분 모두 가능한 시간입니다. 연한 초록은 일부만 가능한 시간입니다.'
       : `${person}님, 미팅 가능한 시간 칸을 눌러 주세요. 다시 누르면 해제됩니다.`;
@@ -223,11 +243,14 @@
       html += `<tr><td class="time">${h}:00</td>`;
       days.forEach(d => {
         const dk = key(d);
+        const past = isPast(dk, h);
         if (isResult) {
-          const n = countAvailable(dk, h);
-          const cls = n === PEOPLE.length ? 'all' : n > 0 ? 'partial' : 'readonly';
+          const n = past ? 0 : countAvailable(dk, h);
+          const cls = past ? 'past' : n === PEOPLE.length ? 'all' : n > 0 ? 'partial' : 'readonly';
           const label = n === PEOPLE.length ? '모두' : n > 0 ? `${n}명` : '';
           html += `<td class="slot ${cls}">${label}</td>`;
+        } else if (past) {
+          html += `<td class="slot past"></td>`;
         } else {
           const on = has(person, dk, h);
           html += `<td class="slot ${on ? 'on' : ''}" data-dk="${dk}" data-h="${h}">${on ? '✓' : ''}</td>`;
@@ -239,7 +262,7 @@
     grid.innerHTML = html;
 
     if (!isResult) {
-      grid.querySelectorAll('td.slot').forEach(td => {
+      grid.querySelectorAll('td.slot:not(.past)').forEach(td => {
         td.onclick = () => {
           toggle(person, td.dataset.dk, Number(td.dataset.h));
           renderGrid();
@@ -257,7 +280,7 @@
     if (activeTab === 3) {
       const slots = allCommonSlots();
       const filled = PEOPLE.map(p => `${p}: ${Object.keys(data[p] || {}).length ? '<b>입력함</b>' : '<span class="no">미입력</span>'}`).join(' · ');
-      let html = `<div class="summary"><p class="status">${filled}</p><h2>세 분 모두 가능한 시간 (전체 기간)</h2>`;
+      let html = `<div class="summary"><p class="status">${filled}</p><h2>세 분 모두 가능한 시간 (이번 주 + 다음 주)</h2>`;
       if (!slots.length) {
         html += '<p class="empty">아직 세 분 모두 겹치는 시간이 없습니다.</p>';
       } else {
@@ -271,20 +294,22 @@
         });
         html += '</ul>';
       }
-      html += '</div>';
+      html += `</div>
+      <div class="reset-box">
+        <p>미팅이 정해졌거나 새로 날짜를 잡을 때는 리셋하세요. 세 분의 선택이 모두 지워지고 처음부터 다시 입력합니다.</p>
+        <button id="resetAll" class="danger">🔄 전체 리셋 (세 분 선택 모두 지우기)</button>
+      </div>`;
       box.innerHTML = html;
+      document.getElementById('resetAll').onclick = () => {
+        if (!confirm('세 분의 선택을 모두 지우고 처음부터 다시 시작할까요?')) return;
+        data = {}; save(); weekIndex = 0; weekStart = weekStartOf(0); activeTab = 0; render();
+      };
     } else {
       const person = PEOPLE[activeTab];
       box.innerHTML = `<div class="actions">
-        <button id="clearWeek">이번 주 선택 지우기</button>
-        <button id="clearAll">${person} 전체 지우기</button>
+        <button id="clearMine">${person} 선택 지우기</button>
       </div>`;
-      document.getElementById('clearWeek').onclick = () => {
-        if (!data[person]) return;
-        for (let i = 0; i < 5; i++) delete data[person][key(addDays(weekStart, i))];
-        save(); render();
-      };
-      document.getElementById('clearAll').onclick = () => {
+      document.getElementById('clearMine').onclick = () => {
         if (!confirm(`${person}님의 선택을 모두 지울까요?`)) return;
         delete data[person]; save(); render();
       };
@@ -293,8 +318,12 @@
 
   function render() { renderTabs(); renderGrid(); renderExtra(); }
 
-  document.getElementById('prevWeek').onclick = () => { weekStart = addDays(weekStart, -7); render(); };
-  document.getElementById('nextWeek').onclick = () => { weekStart = addDays(weekStart, 7); render(); };
+  function goWeek(i) {
+    if (i < 0 || i >= WEEKS) return;
+    weekIndex = i; weekStart = weekStartOf(i); render();
+  }
+  document.getElementById('prevWeek').onclick = () => goWeek(weekIndex - 1);
+  document.getElementById('nextWeek').onclick = () => goWeek(weekIndex + 1);
 
   render();
 </script>
