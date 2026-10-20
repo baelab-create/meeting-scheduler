@@ -61,7 +61,9 @@
   th { font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px 0; }
   th .d { display: block; font-size: 11px; font-weight: 400; }
   th.today { color: var(--accent); }
-  td.time { font-size: 11px; color: var(--muted); text-align: right; padding-right: 4px; width: 46px; white-space: nowrap; }
+  td.time { font-size: 11px; color: var(--muted); text-align: right; padding-right: 4px; width: 58px; white-space: nowrap; }
+  tr.sep td { padding: 10px 0 2px; border-top: 2px solid #9ca3af; }
+  tr.sep span { font-size: 11px; font-weight: 700; color: #4b5563; }
   td.slot {
     height: 38px; background: var(--card); border: 1px solid var(--line);
     border-radius: 6px; cursor: pointer; text-align: center; font-size: 12px;
@@ -163,6 +165,9 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
   function fmtMD(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
+  const h12 = h => (h > 12 ? h - 12 : h);
+  function fmtHour(h) { return `${h12(h)}시~${h12(h + 1)}시`; }   // 12시~1시 형식
+  const SECTIONS = { 12: '오후 (점심 이후)', 16: '저녁' };          // 이 시각 앞에 구분선
   function fmtFull(k) {
     const [y, m, d] = k.split('-').map(Number);
     const dt = new Date(y, m - 1, d);
@@ -240,7 +245,8 @@
     html += '</tr></thead><tbody>';
 
     for (let h = START_HOUR; h < END_HOUR; h++) {
-      html += `<tr><td class="time">${h}:00</td>`;
+      if (SECTIONS[h]) html += `<tr class="sep"><td colspan="6"><span>${SECTIONS[h]}</span></td></tr>`;
+      html += `<tr><td class="time">${fmtHour(h)}</td>`;
       days.forEach(d => {
         const dk = key(d);
         const past = isPast(dk, h);
@@ -289,7 +295,7 @@
         slots.forEach(s => (byDate[s.dk] = byDate[s.dk] || []).push(s.h));
         html += '<ul>';
         Object.keys(byDate).forEach(dk => {
-          const hours = byDate[dk].map(h => `${h}:00~${h + 1}:00`).join(', ');
+          const hours = byDate[dk].map(h => (h < 12 ? '오전 ' : '오후 ') + fmtHour(h)).join(', ');
           html += `<li><b>${fmtFull(dk)}</b> — ${hours}</li>`;
         });
         html += '</ul>';
