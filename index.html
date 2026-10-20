@@ -105,16 +105,21 @@
   }
   .tab::before{
     content:"";position:absolute;z-index:-1;left:0;right:0;top:var(--tab-drop);bottom:-14px;
-    background:var(--red-dim);border-radius:var(--round);
+    background:#B8423E;border-radius:var(--round);            /* 선택 안 된 탭: 어두운 빨강 */
     transform:skewX(var(--skew));
-    box-shadow:4px 0 10px rgba(0,0,0,.33);
-    transition:background .18s;
+    box-shadow:4px 0 10px rgba(0,0,0,.33), inset 0 -6px 12px rgba(0,0,0,.18);
+    transition:background .18s,box-shadow .18s;
   }
   .tab:first-child{padding-left:calc(var(--slant) * 1.4 + 8px);}
+  .tab{color:rgba(255,237,236,.72);}
   .tab:hover{color:#fff;}
-  .tab:hover::before{background:var(--red-d);}
-  .tab.on{color:#fff;}
-  .tab.on::before{background:var(--red);}
+  .tab:hover::before{background:#D64C47;}
+  .tab.on{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25);}
+  .tab.on::before{
+    background:var(--red);top:0;                               /* 선택 탭: 밝은 빨강, 다른 탭보다 위로 솟음 */
+    box-shadow:4px 0 10px rgba(0,0,0,.33), inset 0 3px 0 rgba(255,255,255,.55);
+  }
+  .tab.on .num{opacity:1;}
   .tab:focus-visible{outline:2px solid #fff;outline-offset:-6px;border-radius:4px;}
   .tab .num{font-size:.68rem;font-weight:300;opacity:.82;margin-right:7px;}
   .tabend{flex:0 0 calc(var(--slant) + 2px);}
@@ -129,6 +134,11 @@
   }
   .wrap{max-width:780px;margin:0 auto;padding:22px 18px 40px;}
 
+  .ptitle{
+    margin:0 0 14px;font-size:1.35rem;font-weight:700;color:var(--navy);text-align:center;line-height:1.3;
+  }
+  .ptitle b{color:var(--red-dim);}
+  .ptitle small{display:block;font-size:.72rem;font-weight:300;color:var(--sub);margin-top:4px;}
   .banner{
     background:var(--neu-bg);box-shadow:var(--neu-in-sm);border-radius:12px;
     color:var(--navy);font-size:.8rem;font-weight:500;padding:11px 14px;margin-bottom:14px;
@@ -241,6 +251,7 @@
     table{border-spacing:4px 6px;}
     td.time{width:50px;font-size:.62rem;padding-right:3px;}
     td.slot{height:38px;font-size:.72rem;}
+    .ptitle{font-size:1.1rem;}
     .range{font-size:.78rem;}
     .range .wk{font-size:.62rem;padding:3px 8px;margin-right:5px;}
     .nbtn{padding:9px 9px;font-size:.7rem;}
@@ -268,6 +279,7 @@
   <main class="stage" id="stage">
     <div class="wrap">
       <div id="banner" class="banner" hidden></div>
+      <h1 class="ptitle" id="pageTitle"></h1>
       <div class="week-nav">
         <button class="nbtn" id="prevWeek">◀ 이전 주</button>
         <div class="range" id="weekRange"></div>
@@ -465,6 +477,9 @@
       `<span class="wk">${WEEK_LABEL[weekIndex]}</span>${fmtMD(days[0])} (월) ~ ${fmtMD(days[4])} (금)`;
     document.getElementById('prevWeek').disabled = weekIndex === 0;
     document.getElementById('nextWeek').disabled = weekIndex === WEEKS - 1;
+    document.getElementById('pageTitle').innerHTML = isResult
+      ? '세 분 <b>공통</b> 가능 시간<small>박성훈 · 배원규 · 신재만 교수님</small>'
+      : `<b>${person}</b>의 가능한 시간<small>지금 ${person} 탭이 열려 있습니다</small>`;
     document.getElementById('hint').textContent = isResult
       ? '빨간 칸이 세 분 모두 가능한 시간입니다. 숫자가 있는 칸은 일부만 가능한 시간입니다.'
       : `${person}, 미팅 가능한 시간 칸을 눌러 주세요. 다시 누르면 해제됩니다.`;
