@@ -49,7 +49,7 @@ tab_y0, tab_y1 = M, M + TAB_H + 6
 white_w = 300
 d.rounded_rectangle((M, tab_y0, M + white_w, tab_y1 + 10), 14, fill=WHITE)
 slanted(M + white_w - 40, M + white_w, tab_y0, tab_y1 + 10, WHITE)
-labels = ["01  박성훈 교수", "02  배원규 교수", "03  신재만 교수"]
+labels = ["01  박성훈 교수님", "02  배원규 교수님", "03  신재만 교수님"]
 tab_w = (W - M - (M + white_w) - 30) // 3
 f_tab = ImageFont.truetype(BOLD, 24)
 x = M + white_w - 10
@@ -71,7 +71,7 @@ f_h2 = ImageFont.truetype(MED, 30)
 f_p = ImageFont.truetype(LIGHT, 24)
 top = M + TAB_H + 56
 d.text((M + 70, top), "미팅 일정 조율", font=f_h1, fill=NAVY)
-d.text((M + 70, top + 92), "박성훈 · 배원규 · 신재만 교수", font=f_h2, fill=INK)
+d.text((M + 70, top + 92), "박성훈 · 배원규 · 신재만 교수님", font=f_h2, fill=INK)
 d.text((M + 70, top + 150), "본인 탭에서 가능한 시간을 눌러 주세요.", font=f_p, fill=SUB)
 d.text((M + 70, top + 188), "세 분 모두 되는 시간이 자동으로 모입니다.", font=f_p, fill=SUB)
 d.text((M + 70, top + 226), "이번 주 · 다음 주 (월~금 10시~7시)", font=f_p, fill=GOLD)
