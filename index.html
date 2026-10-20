@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미팅 일정 조율</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --ok: #16a34a;
+    --ok-soft: #dcfce7;
+    --today: #fff7ed;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 16px 0;
+  }
+  h1 { font-size: 18px; margin: 0 0 10px; }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; }
+  .tab {
+    flex: 1 0 auto;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab.result.active { color: var(--ok); border-bottom-color: var(--ok); }
+
+  main { max-width: 760px; margin: 0 auto; padding: 14px 10px 40px; }
+  .week-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 10px;
+  }
+  .week-nav button {
+    padding: 8px 12px; border: 1px solid var(--line); background: var(--card);
+    border-radius: 8px; font-size: 14px; cursor: pointer;
+  }
+  .week-nav .range { font-weight: 600; font-size: 15px; text-align: center; flex: 1; }
+  .hint { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+
+  table { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px 0; }
+  th .d { display: block; font-size: 11px; font-weight: 400; }
+  th.today { color: var(--accent); }
+  td.time { font-size: 11px; color: var(--muted); text-align: right; padding-right: 4px; width: 46px; white-space: nowrap; }
+  td.slot {
+    height: 38px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 6px; cursor: pointer; text-align: center; font-size: 12px;
+    transition: background .1s;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  td.slot:hover { border-color: var(--accent); }
+  td.slot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  td.slot.all { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 700; cursor: default; }
+  td.slot.partial { background: var(--ok-soft); border-color: var(--ok-soft); color: var(--ok); cursor: default; }
+  td.slot.readonly { cursor: default; }
+  td.slot.readonly:hover { border-color: var(--line); }
+
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 10px 0; flex-wrap: wrap; }
+  .legend span::before {
+    content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+    margin-right: 5px; vertical-align: -2px; border: 1px solid var(--line);
+  }
+  .legend .l-on::before { background: var(--accent); border-color: var(--accent); }
+  .legend .l-all::before { background: var(--ok); border-color: var(--ok); }
+  .legend .l-partial::before { background: var(--ok-soft); border-color: var(--ok-soft); }
+
+  .summary { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 16px; }
+  .summary h2 { font-size: 15px; margin: 0 0 8px; }
+  .summary ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; }
+  .summary .empty { color: var(--muted); font-size: 13px; }
+  .status { font-size: 13px; margin: 0 0 10px; }
+  .status b { color: var(--ok); }
+  .status .no { color: var(--muted); }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions button {
+    padding: 8px 12px; border: 1px solid var(--line); background: var(--card);
+    border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>미팅 일정 조율</h1>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+
+<main>
+  <div class="week-nav">
+    <button id="prevWeek">◀ 이전 주</button>
+    <div class="range" id="weekRange"></div>
+    <button id="nextWeek">다음 주 ▶</button>
+  </div>
+  <p class="hint" id="hint"></p>
+  <table id="grid"></table>
+  <div class="legend" id="legend"></div>
+  <div id="extra"></div>
+</main>
+
+<script>
+  // ───────── 설정 ─────────
+  const PEOPLE = ['박성훈 교수', '배원규 교수', '신재만 교수'];
+  const DAYS = ['월', '화', '수', '목', '금'];
+  const START_HOUR = 10;   // 10:00
+  const END_HOUR = 19;     // ~19:00 (마지막 칸 18:00~19:00)
+  const STORAGE_KEY = 'meeting-scheduler-v1';
+
+  // ───────── 상태 ─────────
+  // data = { "박성훈 교수": { "2026-10-20": [10, 11, ...] }, ... }
+  let data = load();
+  let activeTab = 0;                 // 0~2 = 사람, 3 = 결과
+  let weekStart = mondayOf(new Date());
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+  // ───────── 날짜 유틸 ─────────
+  function mondayOf(d) {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const day = (x.getDay() + 6) % 7;   // 월=0 ... 일=6
+    x.setDate(x.getDate() - day);
+    return x;
+  }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function key(d) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  function fmtMD(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
+  function fmtFull(k) {
+    const [y, m, d] = k.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return `${y}년 ${m}월 ${d}일 (${DAYS[(dt.getDay() + 6) % 7] || '주말'})`;
+  }
+  const todayKey = key(new Date());
+
+  // ───────── 가용 여부 ─────────
+  function has(person, dk, h) {
+    return !!(data[person] && data[person][dk] && data[person][dk].includes(h));
+  }
+  function toggle(person, dk, h) {
+    data[person] = data[person] || {};
+    const arr = data[person][dk] || [];
+    const i = arr.indexOf(h);
+    if (i >= 0) arr.splice(i, 1); else arr.push(h);
+    arr.sort((a, b) => a - b);
+    if (arr.length) data[person][dk] = arr; else delete data[person][dk];
+    save();
+  }
+  function countAvailable(dk, h) {
+    return PEOPLE.filter(p => has(p, dk, h)).length;
+  }
+  function allCommonSlots() {
+    // 저장된 모든 날짜를 훑어 3명 모두 가능한 칸을 모은다
+    const dates = new Set();
+    PEOPLE.forEach(p => Object.keys(data[p] || {}).forEach(dk => dates.add(dk)));
+    const out = [];
+    [...dates].sort().forEach(dk => {
+      for (let h = START_HOUR; h < END_HOUR; h++) {
+        if (countAvailable(dk, h) === PEOPLE.length) out.push({ dk, h });
+      }
+    });
+    return out;
+  }
+
+  // ───────── 렌더 ─────────
+  function renderTabs() {
+    const nav = document.getElementById('tabs');
+    nav.innerHTML = '';
+    [...PEOPLE, '✔ 공통 가능 시간'].forEach((name, i) => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (i === 3 ? ' result' : '') + (i === activeTab ? ' active' : '');
+      b.textContent = name;
+      b.onclick = () => { activeTab = i; render(); };
+      nav.appendChild(b);
+    });
+  }
+
+  function renderGrid() {
+    const isResult = activeTab === 3;
+    const person = PEOPLE[activeTab];
+    const grid = document.getElementById('grid');
+    const days = DAYS.map((_, i) => addDays(weekStart, i));
+
+    document.getElementById('weekRange').textContent =
+      `${fmtMD(days[0])} (월) ~ ${fmtMD(days[4])} (금)`;
+    document.getElementById('hint').textContent = isResult
+      ? '초록색 칸이 세 분 모두 가능한 시간입니다. 연한 초록은 일부만 가능한 시간입니다.'
+      : `${person}님, 미팅 가능한 시간 칸을 눌러 주세요. 다시 누르면 해제됩니다.`;
+
+    let html = '<thead><tr><th></th>';
+    days.forEach(d => {
+      const dk = key(d);
+      html += `<th class="${dk === todayKey ? 'today' : ''}">${DAYS[(d.getDay() + 6) % 7]}<span class="d">${fmtMD(d)}</span></th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    for (let h = START_HOUR; h < END_HOUR; h++) {
+      html += `<tr><td class="time">${h}:00</td>`;
+      days.forEach(d => {
+        const dk = key(d);
+        if (isResult) {
+          const n = countAvailable(dk, h);
+          const cls = n === PEOPLE.length ? 'all' : n > 0 ? 'partial' : 'readonly';
+          const label = n === PEOPLE.length ? '모두' : n > 0 ? `${n}명` : '';
+          html += `<td class="slot ${cls}">${label}</td>`;
+        } else {
+          const on = has(person, dk, h);
+          html += `<td class="slot ${on ? 'on' : ''}" data-dk="${dk}" data-h="${h}">${on ? '✓' : ''}</td>`;
+        }
+      });
+      html += '</tr>';
+    }
+    html += '</tbody>';
+    grid.innerHTML = html;
+
+    if (!isResult) {
+      grid.querySelectorAll('td.slot').forEach(td => {
+        td.onclick = () => {
+          toggle(person, td.dataset.dk, Number(td.dataset.h));
+          renderGrid();
+        };
+      });
+    }
+
+    document.getElementById('legend').innerHTML = isResult
+      ? '<span class="l-all">세 분 모두 가능</span><span class="l-partial">일부 가능</span>'
+      : '<span class="l-on">가능한 시간</span>';
+  }
+
+  function renderExtra() {
+    const box = document.getElementById('extra');
+    if (activeTab === 3) {
+      const slots = allCommonSlots();
+      const filled = PEOPLE.map(p => `${p}: ${Object.keys(data[p] || {}).length ? '<b>입력함</b>' : '<span class="no">미입력</span>'}`).join(' · ');
+      let html = `<div class="summary"><p class="status">${filled}</p><h2>세 분 모두 가능한 시간 (전체 기간)</h2>`;
+      if (!slots.length) {
+        html += '<p class="empty">아직 세 분 모두 겹치는 시간이 없습니다.</p>';
+      } else {
+        // 같은 날짜끼리 묶어서 표시
+        const byDate = {};
+        slots.forEach(s => (byDate[s.dk] = byDate[s.dk] || []).push(s.h));
+        html += '<ul>';
+        Object.keys(byDate).forEach(dk => {
+          const hours = byDate[dk].map(h => `${h}:00~${h + 1}:00`).join(', ');
+          html += `<li><b>${fmtFull(dk)}</b> — ${hours}</li>`;
+        });
+        html += '</ul>';
+      }
+      html += '</div>';
+      box.innerHTML = html;
+    } else {
+      const person = PEOPLE[activeTab];
+      box.innerHTML = `<div class="actions">
+        <button id="clearWeek">이번 주 선택 지우기</button>
+        <button id="clearAll">${person} 전체 지우기</button>
+      </div>`;
+      document.getElementById('clearWeek').onclick = () => {
+        if (!data[person]) return;
+        for (let i = 0; i < 5; i++) delete data[person][key(addDays(weekStart, i))];
+        save(); render();
+      };
+      document.getElementById('clearAll').onclick = () => {
+        if (!confirm(`${person}님의 선택을 모두 지울까요?`)) return;
+        delete data[person]; save(); render();
+      };
+    }
+  }
+
+  function render() { renderTabs(); renderGrid(); renderExtra(); }
+
+  document.getElementById('prevWeek').onclick = () => { weekStart = addDays(weekStart, -7); render(); };
+  document.getElementById('nextWeek').onclick = () => { weekStart = addDays(weekStart, 7); render(); };
+
+  render();
+</script>
+</body>
+</html>
